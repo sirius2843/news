@@ -3,7 +3,8 @@ sources:
   - {name: Federal Reserve, category: research, url: https://www.federalreserve.gov/feeds/press_all.xml, language: en, tier: primary}
   - {name: ECB, category: research, url: https://www.ecb.europa.eu/rss/press.html, language: en, tier: primary}
   - {name: SEC Press Releases, category: news, url: https://www.sec.gov/news/pressreleases.rss, language: en, tier: primary}
-  - {name: Nasdaq News, category: news, url: "https://www.nasdaq.com/feed/rssoutbound?category=Stock-Market-News", language: en, tier: mainstream}
+  - {name: US CPI, category: research, url: "https://www.bls.gov/feed/cpi.rss", language: en, tier: primary}
+  - {name: US Employment Situation, category: research, url: "https://www.bls.gov/feed/empsit.rss", language: en, tier: primary}
+  - {name: EIA Today in Energy, category: research, url: "https://www.eia.gov/rss/todayinenergy.xml", language: en, tier: primary}
   - {name: NY Fed Liberty Street Economics, category: analysis, url: https://libertystreeteconomics.newyorkfed.org/feed/, language: en, tier: research}
   - {name: AQR Insights, category: niche, url: https://www.aqr.com/Insights/Research/Alternative-Thinking/RSS, language: en, tier: niche}
-  - {name: GDELT finance query, category: discovery, url: "https://api.gdeltproject.org/api/v2/doc/doc?query=(finance%20OR%20markets%20OR%20economy)%20sourcelang:english&mode=ArtList&format=RSS&maxrecords=50&sort=DateDesc", language: en, tier: discovery}
