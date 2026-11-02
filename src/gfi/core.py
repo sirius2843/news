@@ -1,6 +1,6 @@
 from __future__ import annotations
 import hashlib, json, re, sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from zoneinfo import ZoneInfo
 from email.utils import parsedate_to_datetime
 from pathlib import Path
@@ -47,6 +47,12 @@ def event_key(item):
     words=re.findall(r"[a-z0-9]+",item.get("title","").lower())
     stop={"the","a","an","and","or","of","to","in","on","for","with","as","at","from","after","by"}
     return " ".join(sorted(set(w for w in words if w not in stop))[:8]) or item["id"]
+def published_at(item):
+    raw=item.get("published","")
+    try: return parsedate_to_datetime(raw).astimezone(timezone.utc)
+    except (ValueError, TypeError, IndexError):
+        try: return datetime.fromisoformat(raw.replace("Z","+00:00")).astimezone(timezone.utc)
+        except (ValueError, TypeError): return None
 def score(item):
     # Transparent heuristic; no paid model or unsupported sentiment inference.
     text=(item["title"]+" "+item.get("summary","")).lower()
@@ -60,8 +66,11 @@ def save_db(path, items):
 def render(items, day):
     out=[f"# 全球金融情报日报 | {day}","","> 基于可公开访问来源自动整理。摘要为来源标题/短摘要，非投资建议。观点归纳仅反映原文表述，不代表事实判断。",""]
     labels={"news":"新闻","analysis":"解读","research":"公开研究","niche":"长尾观点","discovery":"待核验发现"}
+    cutoff=datetime.fromisoformat(day).replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)-timedelta(days=2)
+    fresh=[x for x in items if published_at(x) and published_at(x)>=cutoff]
+    out += [f"本期近 72 小时可核验条目：{len(fresh)}；采集总数：{len(items)}。",""]
     for cat in (*CATEGORIES,"discovery"):
-        group=sorted((x for x in items if x["category"]==cat),key=score,reverse=True)[:8]
+        group=sorted((x for x in fresh if x["category"]==cat),key=lambda x:(score(x),published_at(x)),reverse=True)[:8]
         out += [f"## {labels[cat]}"]
         if not group: out.append("- 今日暂无可用条目。")
         for x in group:
