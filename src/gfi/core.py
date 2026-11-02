@@ -7,6 +7,15 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 import feedparser, requests, yaml
 CATEGORIES = ("news", "analysis", "research", "niche")
+ASSETS = {
+    "美股": ("s&p 500","nasdaq","dow jones","us equities","u.s. stocks","wall street","stock market"),
+    "科技": ("artificial intelligence"," ai ","semiconductor","chip","nvidia","microsoft","apple","alphabet","amazon","meta","data center"),
+    "美债": ("treasury","bond yield","interest rate","fomc","federal reserve","fed rate","inflation","consumer price index","employment situation"),
+    "美元": ("dollar","foreign exchange","fed rate","fomc","federal reserve","inflation","consumer price index","employment situation"),
+    "欧洲市场": ("europe","eurozone","euro area","ecb","european central bank","eu economy"),
+    "黄金": ("gold","precious metal","real yield","safe haven"),
+    "原油": ("crude oil","oil price","petroleum","opec","eia","energy information administration"),
+}
 HEADERS = {"User-Agent": "GlobalFinanceIntelligence/0.1 (public research collector; contact: repo owner)"}
 def clean_url(url):
     p=urlsplit(url or "")
@@ -58,27 +67,35 @@ def score(item):
     text=(item["title"]+" "+item.get("summary","")).lower()
     terms=("fed","rate","inflation","earnings","tariff","bond","oil","bank","credit","recession","market")
     return min(100, 20 + 8*sum(t in text for t in terms) + (15 if item.get("tier")=="primary" else 0))
+def asset_tags(item):
+    text=" "+(item.get("title","")+" "+item.get("summary","")).lower()+" "
+    return [asset for asset, terms in ASSETS.items() if any(t in text for t in terms)]
+def market_relevance(item):
+    title=item.get("title","").lower()
+    if any(x in title for x in ("price target","consensus price target","key takeaways for long-term investors")):
+        return 0
+    tags=asset_tags(item)
+    if not tags: return 0
+    return score(item)+10*len(tags)+(20 if item.get("tier")=="primary" else 0)
 def save_db(path, items):
     Path(path).parent.mkdir(parents=True,exist_ok=True)
     with sqlite3.connect(path) as db:
         db.execute("CREATE TABLE IF NOT EXISTS items(id TEXT PRIMARY KEY,title TEXT,url TEXT,published TEXT,summary TEXT,source TEXT,category TEXT,tier TEXT,collected_at TEXT,score INTEGER)")
         db.executemany("INSERT OR IGNORE INTO items VALUES(?,?,?,?,?,?,?,?,?,?)",[(x["id"],x["title"],x["url"],x["published"],x["summary"],x["source"],x["category"],x["tier"],x["collected_at"],score(x)) for x in items])
 def render(items, day):
-    out=[f"# 全球金融情报日报 | {day}","","> 基于可公开访问来源自动整理。摘要为来源标题/短摘要，非投资建议。观点归纳仅反映原文表述，不代表事实判断。",""]
-    labels={"news":"新闻","analysis":"解读","research":"公开研究","niche":"长尾观点","discovery":"待核验发现"}
+    out=[f"# 全球金融情报日报 | {day}","","> 按资产筛选的公开来源索引。方向需结合原文和行情核验；标题关键词不能单独推断利好利空。",""]
     cutoff=datetime.fromisoformat(day).replace(tzinfo=ZoneInfo("Asia/Shanghai")).astimezone(timezone.utc)-timedelta(days=2)
-    fresh=[x for x in items if published_at(x) and published_at(x)>=cutoff]
-    out += [f"本期近 72 小时可核验条目：{len(fresh)}；采集总数：{len(items)}。",""]
-    for cat in (*CATEGORIES,"discovery"):
-        group=sorted((x for x in fresh if x["category"]==cat),key=lambda x:(score(x),published_at(x)),reverse=True)[:8]
-        out += [f"## {labels[cat]}"]
-        if not group: out.append("- 今日暂无可用条目。")
+    fresh=[x for x in items if published_at(x) and published_at(x)>=cutoff and market_relevance(x)>0]
+    out += [f"近 72 小时采集 {len(items)} 条；通过主要资产相关性筛选 {len(fresh)} 条。",""]
+    for asset in ASSETS:
+        group=sorted((x for x in fresh if asset in asset_tags(x)),key=lambda x:(market_relevance(x),published_at(x)),reverse=True)[:5]
+        out += [f"## {asset}"]
+        if not group: out.append("- 暂无足够重要且可核验的事件。")
         for x in group:
             desc=(x.get("summary","").strip() or "暂无公开摘要").replace("\n"," ")
-            stance,evidence=viewpoint(x)
-            out.append(f"- **{x['title']}** — {x['source']} · {x.get('published','')} · 评分 {score(x)} · {stance}  \n  摘要：{desc[:350]}  \n  观点依据（原文标题/摘要）：{evidence}  \n  [原文]({x['url']})")
+            out.append(f"- **{x['title']}** — {x['source']} · {x.get('published','')} · 相关性 {market_relevance(x)}  \n  原始摘要：{desc[:350]}  \n  影响方向：待核对原文、市场预期与最新行情。  \n  [原文]({x['url']})")
         out.append("")
-    out += ["## 方法与局限","采集基于公开 RSS；源可用性会变化，缺少 RSS 的研报不会被系统覆盖。未绕过登录或付费墙，也不下载全文。观点方向仅按标题和摘要关键词判断，可能误判；小道消息仅作为待核验发现，须回到原文确认。"]
+    out += ["## 方法与局限","此文件是机器筛选索引；中文解读和利好利空判断需在定时对话中结合原文与市场数据完成。单一资产可以出现在多个栏目。来源缺口保留为空，不用零散公司新闻填充。"]
     return "\n".join(out)+"\n"
 def run(root=Path(".")):
     sources=load_sources(root/"sources/sources.yaml"); items=collect(sources)
