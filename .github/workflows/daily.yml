@@ -1,7 +1,5 @@
 name: Daily finance intelligence
 on:
-  schedule:
-    - cron: '30 0 * * *' # 08:30 Asia/Shanghai
   workflow_dispatch:
 permissions:
   contents: write
